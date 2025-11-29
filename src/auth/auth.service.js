@@ -1,61 +1,80 @@
-import jwt from "jsonwebtoken";
-import { UserModel } from "../models/user.model.js";
-import { comparePassword } from "./password.utils.js";
+// auth.services.js
+import bcrypt from "bcrypt";
+// ❌ ELIMINAR: import { pool } from "../db/db.js"; 
+import { isPasswordSecure } from "../utils/password.utils.js";
+import { UserModel } from "../models/user.model.js"; // 🟢 Importar el modelo
 
 export const AuthService = {
-  async login(email, password) {
-    // Buscar usuario
-    const user = await UserModel.findByEmail(email);
+    // -----------------------------------
+    // LOGIN (Refactorizado para usar UserModel)
+    // -----------------------------------
+    login: async (email, password) => {
+        // 1. Obtener usuario
+        const user = await UserModel.findByEmail(email);
 
-    if (!user) {
-      throw new Error("Usuario no encontrado");
-    }
+        if (!user) {
+            throw new Error("Credenciales inválidas."); // Mensaje genérico por seguridad
+        }
 
-    // Verificar bloqueo
-    if (user.is_locked) {
-      throw new Error("Cuenta bloqueada. Contacte al administrador.");
-    }
+        // 2. Verificar bloqueo
+        if (user.is_locked) {
+            throw new Error("Cuenta bloqueada. Contacte a un administrador.");
+        }
 
-    // Comparar contraseñas
-    const valid = await comparePassword(password, user.contrasena);
+        // 3. Comparar contraseña
+        const match = await bcrypt.compare(password, user.password);
 
-    if (!valid) {
-      const nuevosIntentos = user.failed_attempts + 1;
+        if (!match) {
+            const newAttempts = (user.failed_attempts || 0) + 1;
+            let isLocked = false;
+            let errorMessage = "Contraseña incorrecta.";
 
-      // Si llega a 3 → bloqueado
-      const bloquear = nuevosIntentos >= 3;
+            if (newAttempts >= 5) {
+                isLocked = true;
+                errorMessage = "Cuenta bloqueada por intentos fallidos.";
+            }
 
-      // Actualizar en BD
-      await UserModel.updateFailedAttempts({
-        id: user.id,
-        failed_attempts: nuevosIntentos,
-        is_locked: bloquear
-      });
+            // 4. Actualizar intentos y bloqueo en el modelo
+            await UserModel.updateAttempts(user.id, newAttempts, isLocked);
 
-      if (bloquear) {
-        throw new Error("Cuenta bloqueada por demasiados intentos fallidos.");
-      }
+            throw new Error(errorMessage);
+        }
 
-      throw new Error("Contraseña incorrecta.");
-    }
+        // 5. Login exitoso: Resetear intentos
+        await UserModel.updateAttempts(user.id, 0, false);
 
-    // Login exitoso → reset de intentos
-    await UserModel.updateFailedAttempts({
-      id: user.id,
-      failed_attempts: 0,
-      is_locked: false
-    });
+        // Devolver usuario sin la contraseña
+        const { password: _, ...userWithoutPassword } = user;
+        
+        return { message: "Login exitoso", user: userWithoutPassword };
+    },
 
-    // Crear token
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.correo,
-      },
-      process.env.JWT_SECRET || "supersecreto123",
-      { expiresIn: "1h" }
-    );
+    // -----------------------------------
+    // REGISTER (Corregido para usar UserModel)
+    // -----------------------------------
+    register: async (nombre, email, password) => {
+        // 1. Criterio 3: Validar seguridad de contraseña
+        if (!isPasswordSecure(password)) {
+            throw new Error(
+                "La contraseña debe tener mínimo 8 caracteres, incluir mayúscula, minúscula, número y símbolo."
+            );
+        }
+        
+        // 2. Verificar si ya existe
+        const existingUser = await UserModel.findByEmail(email);
+        if (existingUser) {
+            throw new Error("El email ya se encuentra registrado.");
+        }
 
-    return { message: "Login exitoso", token };
-  }
+        // 3. Criterio 1: Hashear contraseña
+        const hashed = await bcrypt.hash(password, 10);
+
+        // 4. Delegar la inserción al Modelo
+        const user = await UserModel.register(nombre, email, hashed);
+
+        return {
+            message: "Usuario registrado correctamente",
+            user: user,
+        };
+    },
 };

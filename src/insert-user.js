@@ -1,28 +1,21 @@
-import { pool } from "./db/db.js";
 import bcrypt from "bcrypt";
+import { pool } from "./db/db.js";
 
-async function insertUser() {
-  const nombre = "Test User";
-  const correo = "test@mail.com";
-  const contrasenaPlano = "1234";
+const nombre = "Test";
+const email = "[test@mail.com](mailto:test@mail.com)";
+const password = "ClaveSegura123!";
 
-  try {
-    const hashed = await bcrypt.hash(contrasenaPlano, 10);
+const run = async () => {
+const hashed = await bcrypt.hash(password, 10);
 
-    const result = await pool.query(
-      `INSERT INTO usuarios (nombre, correo, contrasena)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [nombre, correo, hashed]
-    );
+const query = `     INSERT INTO usuarios (nombre, email, password)
+    VALUES ($1, $2, $3)
+    RETURNING *
+  `;
 
-    console.log("Usuario insertado correctamente:");
-    console.log(result.rows[0]);
-  } catch (err) {
-    console.error("Error insertando usuario:", err);
-  } finally {
-    pool.end();
-  }
-}
+const result = await pool.query(query, [nombre, email, hashed]);
 
-insertUser();
+console.log("Usuario insertado:", result.rows[0]);
+};
+
+run();

@@ -10,3 +10,15 @@ export async function loginController(req, res) {
     res.status(400).json({ error: err.message });
   }
 }
+
+export async function registerController(req, res) {
+  const { nombre, email, password } = req.body;
+
+  try {
+    const data = await AuthService.register(nombre, email, password);
+    res.json(data);
+  } catch (err) {
+    console.error("ERROR COMPLETO:", err);
+    res.status(400).json({ error: err.message });
+  }
+}

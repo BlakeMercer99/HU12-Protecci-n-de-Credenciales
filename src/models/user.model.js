@@ -1,26 +1,39 @@
-import { pool } from "../db/db.js";
+// user.model.js
+import { pool } from "../db/db.js"; // 🟢 ¡Asegúrate de que esta ruta a tu db.js es correcta!
 
 export const UserModel = {
-  findByEmail: async (email) => {
-    const result = await pool.query(
-      "SELECT * FROM usuarios WHERE correo = $1",
-      [email]
-    );
-    return result.rows[0];
-  },
+    // -----------------------------------
+    // BUSCAR USUARIO
+    // -----------------------------------
+    findByEmail: async (email) => {
+        const query = `SELECT * FROM usuarios WHERE email = $1`;
+        const result = await pool.query(query, [email]);
+        return result.rows[0];
+    },
 
-  register: async (nombre, correo, hashedPassword) => {
-    await pool.query(
-      `INSERT INTO usuarios(nombre, correo, contrasena, failed_attempts, is_locked)
-       VALUES ($1, $2, $3, 0, false)`,
-      [nombre, correo, hashedPassword]
-    );
-  },
+    // -----------------------------------
+    // REGISTRAR USUARIO
+    // -----------------------------------
+    register: async (nombre, email, hashedPassword) => {
+        const query = `
+            INSERT INTO usuarios (nombre, email, password, failed_attempts, is_locked)
+            VALUES ($1, $2, $3, 0, FALSE)
+            RETURNING id, nombre, email
+        `;
+        const result = await pool.query(query, [nombre, email, hashedPassword]);
+        return result.rows[0];
+    },
 
-  updateFailedAttempts: async (user) => {
-    await pool.query(
-      `UPDATE usuarios SET failed_attempts = $1, is_locked = $2 WHERE id = $3`,
-      [user.failed_attempts, user.is_locked, user.id]
-    );
-  }
+    // -----------------------------------
+    // ACTUALIZAR INTENTOS FALLIDOS (Refactorizado de login)
+    // -----------------------------------
+    updateAttempts: async (userId, newAttempts, isLocked) => {
+        const query = `
+            UPDATE usuarios 
+            SET failed_attempts = $1, is_locked = $2 
+            WHERE id = $3
+            RETURNING id;
+        `;
+        await pool.query(query, [newAttempts, isLocked, userId]);
+    }
 };
